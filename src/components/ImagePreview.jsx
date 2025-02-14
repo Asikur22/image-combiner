@@ -1,6 +1,6 @@
 import DraggableImage from './DraggableImage';
 
-export default function ImagePreview({ images, draggedIndex, setDraggedIndex, setImages }) {
+export default function ImagePreview({ images, draggedIndex, setDraggedIndex, setImages, onRemove }) {
     const handleDrop = (e, targetIndex) => {
         e.preventDefault();
         if (draggedIndex !== null && draggedIndex !== targetIndex) {
@@ -20,7 +20,7 @@ export default function ImagePreview({ images, draggedIndex, setDraggedIndex, se
 
     return (
         <div className="space-y-3">
-            <h3 className="text-lg font-semibold text-gray-300">Preview:</h3>
+            <h3 className="text-lg font-semibold text-gray-300">Selected Images:</h3>
             <div 
                 className="flex gap-4 pb-4 max-w-full border-b border-gray-700"
                 onDragOver={(e) => e.preventDefault()}
@@ -48,7 +48,10 @@ export default function ImagePreview({ images, draggedIndex, setDraggedIndex, se
                                     setDraggedIndex(targetIndex);
                                 }
                             }}
-                            onRemove={handleRemove}
+                            onRemove={(index) => {
+                                handleRemove(index);
+                                onRemove?.(index);
+                            }}
                         />
                     </div>
                 ))}    

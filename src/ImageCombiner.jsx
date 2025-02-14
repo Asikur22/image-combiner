@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "./components/ui/button";
+import { ErrorMessage } from "./components/ui/error-message";
 import ImagePreview from "./components/ImagePreview";
 import CombinedImagePreview from "./components/CombinedImagePreview";
 
@@ -11,6 +12,7 @@ export default function ImageCombiner() {
             containerRef.current.focus();
         }
     }, []);
+
     const [images, setImages] = useState([]);
     const [combinedImage, setCombinedImage] = useState(null);
     const [orientation, setOrientation] = useState('horizontal');
@@ -18,35 +20,101 @@ export default function ImageCombiner() {
     const [gap, setGap] = useState(0);
     const [draggedIndex, setDraggedIndex] = useState(null);
 
+    useEffect(() => {
+        if (images.length >= 2) {
+            setTimeout(() => {
+                combineImages();
+            }, 200);
+        } else {
+            setCombinedImage(null);
+        }
+    }, [images, orientation, alignment, gap]);
+
+    const [fileInput, setFileInput] = useState(null);
+
     const handleImageUpload = (event) => {
         const files = Array.from(event.target.files);
         const imageUrls = files.map(file => URL.createObjectURL(file));
-        setImages(imageUrls);
+        setImages(prevImages => {
+            const updatedImages = [...prevImages, ...imageUrls];
+            return updatedImages;
+        });
+        setFileInput(event.target);
     };
 
+    const handleImageRemove = (index) => {        
+        if (fileInput) {
+            const dt = new DataTransfer();
+            const files = Array.from(fileInput.files);
+            files.splice(index, 1);
+            files.forEach(file => dt.items.add(file));
+            fileInput.files = dt.files;
+            setFileInput(fileInput);
+        }
+    };
+
+    const [pasteError, setPasteError] = useState(null);
+    const [lastPasteTime, setLastPasteTime] = useState(0);
     const handlePaste = async (e) => {
         e.preventDefault();
-        const items = Array.from(e.clipboardData.items);
-        const imageItems = items.filter(item => item.type.startsWith('image/'));
-
-        if (imageItems.length > 0) {
+        setPasteError(null);
+        
+        const now = Date.now();
+        if (now - lastPasteTime < 100) {
+            return; // Prevent duplicate pastes within 100ms
+        }
+        setLastPasteTime(now);
+        
+        try {
+            let items;
+            if (e.clipboardData) {
+                items = Array.from(e.clipboardData.items || []);
+            } else {
+                try {
+                    const clipboardItems = await navigator.clipboard.read();
+                    items = await Promise.all(
+                        clipboardItems.map(async item => {
+                            const imageType = item.types.find(type => type.startsWith('image/'));
+                            if (imageType) {
+                                const blob = await item.getType(imageType);
+                                return { type: imageType, getAsFile: () => new File([blob], 'pasted-image.png', { type: imageType }) };
+                            }
+                            return null;
+                        })
+                    );
+                } catch (clipboardError) {
+                    throw new Error('Failed to access clipboard. Please check your browser permissions.');
+                }
+            }
+    
+            const imageItems = items.filter(item => item && item.type.startsWith('image/'));
+    
+            if (imageItems.length === 0) {
+                throw new Error('No image found in clipboard.');
+            }
+    
             const newImages = await Promise.all(imageItems.map(async item => {
                 const blob = item.getAsFile();
                 return new Promise((resolve, reject) => {
                     const reader = new FileReader();
                     reader.onload = () => resolve(reader.result);
-                    reader.onerror = reject;
+                    reader.onerror = () => reject(new Error('Failed to read image data.'));
                     reader.readAsDataURL(blob);
                 });
             }));
-
+    
             setImages(prevImages => {
                 const updatedImages = [...prevImages, ...newImages];
                 if (updatedImages.length >= 2) {
-                    setTimeout(combineImages, 0);
+                    setTimeout(() => {
+                        combineImages();
+                    }, 100);
                 }
                 return updatedImages;
             });
+        } catch (error) {
+            console.error('Failed to read clipboard contents:', error);
+            setPasteError(error.message);
         }
     };
 
@@ -159,127 +227,115 @@ export default function ImageCombiner() {
                         >
                             <p className="text-gray-400">Click here to paste images from clipboard</p>
                             <Button
-                                onClick={async () => {
-                                    try {
-                                        const clipboardItems = await navigator.clipboard.read();
-                                        for (const clipboardItem of clipboardItems) {
-                                            const imageTypes = clipboardItem.types.filter(type => type.startsWith('image/'));
-                                            if (imageTypes.length > 0) {
-                                                const blob = await clipboardItem.getType(imageTypes[0]);
-                                                const reader = new FileReader();
-                                                reader.onload = () => {
-                                                    setImages(prevImages => [...prevImages, reader.result]);
-                                                };
-                                                reader.readAsDataURL(blob);
-                                            }
-                                        }
-                                    } catch (error) {
-                                        console.error('Failed to read clipboard:', error);
-                                    }
-                                }}
+                                onClick={handlePaste}
                                 variant="outline"
                                 className="bg-transparent border-gray-600 hover:bg-gray-700 hover:border-gray-500"
                             >
                                 Paste Image
                             </Button>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="space-y-3 w-full flex flex-col items-center">
-                    <div className="space-x-4 flex items-center">
-                        <label className="block text-sm font-medium text-gray-300">Orientation:</label>
-                        <div className="flex space-x-4">
-                            <label className="inline-flex items-center cursor-pointer">
-                                <input
-                                    type="radio"
-                                    className="w-4 h-4 text-blue-500 border-gray-400 focus:ring-blue-500 focus:ring-2 bg-gray-700"
-                                    name="orientation"
-                                    value="horizontal"
-                                    checked={orientation === 'horizontal'}
-                                    onChange={(e) => {
-                                        setOrientation(e.target.value);
-                                        if (images.length >= 2) {
-                                            combineImages();
-                                        }
-                                    }}
+                            {pasteError && (
+                                <ErrorMessage 
+                                    message={pasteError} 
+                                    className="mt-2" 
+                                    onDismiss={() => setPasteError(null)}
                                 />
-                                <span className="ml-2 text-gray-300">Horizontal</span>
-                            </label>
-                            <label className="inline-flex items-center cursor-pointer">
-                                <input
-                                    type="radio"
-                                    className="w-4 h-4 text-blue-500 border-gray-400 focus:ring-blue-500 focus:ring-2 bg-gray-700"
-                                    name="orientation"
-                                    value="vertical"
-                                    checked={orientation === 'vertical'}
-                                    onChange={(e) => {
-                                        setOrientation(e.target.value);
-                                        if (images.length >= 2) {
-                                            combineImages();
-                                        }
-                                    }}
-                                />
-                                <span className="ml-2 text-gray-300">Vertical</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center space-x-4">
-                        <label className="block text-sm font-medium text-gray-300">Alignment:</label>
-                        <select
-                            value={alignment}
-                            onChange={(e) => {
-                                setAlignment(e.target.value);
-                                if (images.length >= 2) {
-                                    combineImages();
-                                }
-                            }}
-                            className="bg-gray-700 border-gray-600 text-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                        >
-                            {orientation === 'horizontal' ? (
-                                <>
-                                    <option value="top">Top</option>
-                                    <option value="center">Center</option>
-                                    <option value="bottom">Bottom</option>
-                                </>
-                            ) : (
-                                <>
-                                    <option value="left">Left</option>
-                                    <option value="center">Center</option>
-                                    <option value="right">Right</option>
-                                </>
                             )}
-                        </select>
+                        </div>
                     </div>
-
-                    <div className="flex items-center space-x-4">
-                        <label className="block text-sm font-medium text-gray-300">Gap:</label>
-                        <input
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={gap}
-                            onChange={(e) => {
-                                const value = Math.max(0, Math.min(100, parseInt(e.target.value) || 0));
-                                setGap(value);
-                                if (images.length >= 2) {
-                                    combineImages();
-                                }
-                            }}
-                            className="w-20 bg-gray-700 border-gray-600 text-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                        />
-                        <span className="text-sm text-gray-400">pixels</span>
-                    </div>
-
-                    <Button 
-                        onClick={combineImages} 
-                        disabled={images.length < 2}
-                        className="w-full sm:w-auto"
-                    >
-                        Combine Images
-                    </Button>
                 </div>
+
+                {images.length > 0 && (
+                    <div className="space-y-3 w-full flex flex-col items-center">
+                        <div className="space-x-4 flex items-center">
+                            <label className="block text-sm font-medium text-gray-300">Orientation:</label>
+                            <div className="flex space-x-4">
+                                <label className="inline-flex items-center cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        className="w-4 h-4 text-blue-500 border-gray-400 focus:ring-blue-500 focus:ring-2 bg-gray-700"
+                                        name="orientation"
+                                        value="horizontal"
+                                        checked={orientation === 'horizontal'}
+                                        onChange={(e) => {
+                                            setOrientation(e.target.value);                                    
+                                        }}
+                                    />
+                                    <span className="ml-2 text-gray-300">Horizontal</span>
+                                </label>
+                                <label className="inline-flex items-center cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        className="w-4 h-4 text-blue-500 border-gray-400 focus:ring-blue-500 focus:ring-2 bg-gray-700"
+                                        name="orientation"
+                                        value="vertical"
+                                        checked={orientation === 'vertical'}
+                                        onChange={(e) => {
+                                            setOrientation(e.target.value);                                    
+                                        }}
+                                    />
+                                    <span className="ml-2 text-gray-300">Vertical</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center space-x-4">
+                            <label className="block text-sm font-medium text-gray-300">Alignment:</label>
+                            <select
+                                value={alignment}
+                                onChange={(e) => {
+                                    setAlignment(e.target.value);                            
+                                }}
+                                className="bg-gray-700 border-gray-600 text-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                            >
+                                {orientation === 'horizontal' ? (
+                                    <>
+                                        <option value="top">Top</option>
+                                        <option value="center">Center</option>
+                                        <option value="bottom">Bottom</option>
+                                    </>
+                                ) : (
+                                    <>
+                                        <option value="left">Left</option>
+                                        <option value="center">Center</option>
+                                        <option value="right">Right</option>
+                                    </>
+                                )}
+                            </select>
+                        </div>
+
+                        <div className="flex items-center space-x-4">
+                            <label className="block text-sm font-medium text-gray-300">Gap:</label>
+                            <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                value={gap}
+                                onChange={(e) => {
+                                    const value = Math.max(0, Math.min(100, parseInt(e.target.value) || 0));
+                                    setGap(value);                            
+                                }}
+                                className="w-20 bg-gray-700 border-gray-600 text-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                            />
+                            <span className="text-sm text-gray-400">pixels</span>
+                        </div>
+
+                        <div className="flex gap-2">                  
+                            <Button 
+                                onClick={() => {
+                                    setImages([]);
+                                    setCombinedImage(null);
+                                    if (fileInput) {
+                                        fileInput.value = '';
+                                        setFileInput(null);
+                                    }
+                                }} 
+                                className="inline-block w-48 bg-red-500 hover:bg-red-600"
+                            >
+                                Reset
+                            </Button>
+                        </div>
+                    </div>
+                )}
 
             </div>
             <div className="flex-1 bg-gray-800 rounded-md shadow-2xl p-6">
@@ -290,6 +346,7 @@ export default function ImageCombiner() {
                             draggedIndex={draggedIndex}
                             setDraggedIndex={setDraggedIndex}
                             setImages={setImages}
+                            onRemove={handleImageRemove}
                         />
                     )}
 
