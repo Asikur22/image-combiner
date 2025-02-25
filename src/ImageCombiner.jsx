@@ -18,6 +18,13 @@ export default function ImageCombiner() {
     const [orientation, setOrientation] = useState('horizontal');
     const [alignment, setAlignment] = useState('center');
     const [gap, setGap] = useState(0);
+    const gapOptions = [
+        { value: 0, label: 'None' },
+        { value: 8, label: 'Small' },
+        { value: 24, label: 'Medium' },
+        { value: 48, label: 'Large' },
+        { value: 96, label: 'Extra Large' }
+    ];
     const [draggedIndex, setDraggedIndex] = useState(null);
 
     useEffect(() => {
@@ -119,73 +126,98 @@ export default function ImageCombiner() {
     };
 
     const combineImages = async () => {
+        if (images.length < 2) return;
+
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         const loadedImages = await Promise.all(
-            images.map(src => new Promise((resolve, reject) => {
-                const img = new Image();
-                img.onload = () => resolve(img);
-                img.onerror = reject;
-                img.src = src;
-            }))
+            images.map(src => {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => resolve(img);
+                    img.onerror = reject;
+                    img.src = src;
+                });
+            })
         );
 
+        const gapPixels = parseInt(gap);
         let totalWidth = 0;
         let totalHeight = 0;
         let maxWidth = 0;
         let maxHeight = 0;
 
-        loadedImages.forEach(img => {
+        // Calculate total dimensions including gaps
+        loadedImages.forEach((img, index) => {
             if (orientation === 'horizontal') {
-                totalWidth += img.width;
+                totalWidth += img.width + (index < loadedImages.length - 1 ? gapPixels : 0);
                 maxHeight = Math.max(maxHeight, img.height);
             } else {
-                totalHeight += img.height;
+                totalHeight += img.height + (index < loadedImages.length - 1 ? gapPixels : 0);
                 maxWidth = Math.max(maxWidth, img.width);
             }
         });
 
-        canvas.width = orientation === 'horizontal' ? totalWidth : maxWidth;
-        canvas.height = orientation === 'horizontal' ? maxHeight : totalHeight;
+        if (orientation === 'horizontal') {
+            canvas.width = totalWidth;
+            canvas.height = maxHeight;
+            ctx.fillStyle = 'transparent';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else {
+            canvas.width = maxWidth;
+            canvas.height = totalHeight;
+            ctx.fillStyle = 'transparent';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
 
         let currentX = 0;
         let currentY = 0;
 
         loadedImages.forEach((img, index) => {
-            if (orientation === 'horizontal') {
-                let y = 0;
-                if (alignment === 'center') {
+            let x = currentX;
+            let y = currentY;
+
+            if (alignment === 'center') {
+                if (orientation === 'horizontal') {
                     y = (maxHeight - img.height) / 2;
-                } else if (alignment === 'bottom') {
-                    y = maxHeight - img.height;
-                }
-                ctx.drawImage(img, currentX, y);
-                currentX += img.width + (index < loadedImages.length - 1 ? gap : 0);
-            } else {
-                let x = 0;
-                if (alignment === 'center') {
+                } else {
                     x = (maxWidth - img.width) / 2;
-                } else if (alignment === 'right') {
+                }
+            } else if (alignment === 'end') {
+                if (orientation === 'horizontal') {
+                    y = maxHeight - img.height;
+                } else {
                     x = maxWidth - img.width;
                 }
-                ctx.drawImage(img, x, currentY);
-                currentY += img.height + (index < loadedImages.length - 1 ? gap : 0);
+            }
+
+            ctx.drawImage(img, x, y);
+
+            if (orientation === 'horizontal') {
+                currentX += img.width;
+                if (index < loadedImages.length - 1) {
+                    currentX += gapPixels;
+                }
+            } else {
+                currentY += img.height;
+                if (index < loadedImages.length - 1) {
+                    currentY += gapPixels;
+                }
             }
         });
 
-        const combinedImageUrl = canvas.toDataURL('image/png');
-        setCombinedImage(combinedImageUrl);
+        setCombinedImage(canvas.toDataURL());
     };
 
     return (
         <div 
             ref={containerRef}
-            className="flex gap-6 p-6 h-screen bg-gray-900" 
+            className="flex flex-col md:flex-row gap-6 p-6 h-screen bg-gray-900" 
             onPaste={handlePaste}
             tabIndex="0"
         >
             <div 
-                className="w-[450px] bg-gray-800 rounded-md shadow-2xl p-6 space-y-4 transition-all duration-300 flex flex-col items-center justify-start"
+                className="w-full md:w-[350px] lg:w-[450px] bg-gray-800 rounded-md shadow-2xl p-6 space-y-4 transition-all duration-300 flex flex-col items-center justify-start"
                 onPaste={handlePaste}
                 tabIndex="0"
             >
@@ -305,18 +337,17 @@ export default function ImageCombiner() {
 
                         <div className="flex items-center space-x-4">
                             <label className="block text-sm font-medium text-gray-300">Gap:</label>
-                            <input
-                                type="number"
-                                min="0"
-                                max="100"
+                            <select
                                 value={gap}
-                                onChange={(e) => {
-                                    const value = Math.max(0, Math.min(100, parseInt(e.target.value) || 0));
-                                    setGap(value);                            
-                                }}
-                                className="w-20 bg-gray-700 border-gray-600 text-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                            />
-                            <span className="text-sm text-gray-400">pixels</span>
+                                onChange={(e) => setGap(parseInt(e.target.value))}
+                                className="bg-gray-700 border-gray-600 text-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                            >
+                                {gapOptions.map(option => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
 
                         <div className="flex gap-2">                  
@@ -338,7 +369,7 @@ export default function ImageCombiner() {
                 )}
 
             </div>
-            <div className="flex-1 bg-gray-800 rounded-md shadow-2xl p-6">
+            <div className="w-full md:flex-1 bg-gray-800 rounded-md shadow-2xl p-6">
                 <div className="overflow-y-auto h-full scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
                     {images.length > 0 && (
                         <ImagePreview 

@@ -22,7 +22,14 @@ export default function DownloadImage({ combinedImage }) {
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
 
-            ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+            // Maintain aspect ratio when drawing to avoid distortion
+            const scale = Math.min(targetWidth / img.width, targetHeight / img.height);
+            const scaledWidth = img.width * scale;
+            const scaledHeight = img.height * scale;
+            const x = (targetWidth - scaledWidth) / 2;
+            const y = (targetHeight - scaledHeight) / 2;
+
+            ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
             const downloadLink = document.createElement('a');
             downloadLink.href = canvas.toDataURL('image/jpeg', quality);
             downloadLink.download = 'combined-image.jpg';

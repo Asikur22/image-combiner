@@ -67,7 +67,7 @@ export default function DraggableImage({ src, index, onDragStart, onDragEnd, onD
             <img
                 src={src}
                 alt={`Preview ${index + 1}`}
-                className="w-24 h-24 object-cover rounded-lg select-none"
+                className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-lg select-none"
                 draggable="false"
                 onDragStart={(e) => e.preventDefault()}
             />

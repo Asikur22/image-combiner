@@ -22,7 +22,7 @@ export default function ImagePreview({ images, draggedIndex, setDraggedIndex, se
         <div className="space-y-3">
             <h3 className="text-lg font-semibold text-gray-300">Selected Images:</h3>
             <div 
-                className="flex gap-4 pb-4 max-w-full border-b border-gray-700"
+                className="flex gap-4 pb-4 max-w-full overflow-x-auto border-b border-gray-700 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent"
                 onDragOver={(e) => e.preventDefault()}
             >
                 {images.map((src, index) => (

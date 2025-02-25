@@ -26,8 +26,8 @@ RUN npm install -g serve
 # Copy built assets from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Expose port
+# Expose port (internal container port)
 EXPOSE 3000
 
-# Start the application
+# Start the application (container listens on port 3000)
 CMD ["serve", "-s", "dist", "-l", "3000"]
